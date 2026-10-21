@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Заявки УРМ</title>
+<meta name="theme-color" content="#0055A5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="УРМ">
 <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -112,10 +119,16 @@ tr:hover td{background:var(--msp-blue-light)}
 .history-cell .h-list{display:none;margin-top:6px;padding:6px 8px;background:var(--msp-gray-light);border-radius:8px;max-height:220px;overflow-y:auto;border-left:3px solid var(--msp-orange)}
 .history-cell .h-list.open{display:block}
 .history-cell .h-item{margin:3px 0;line-height:1.35}
-/* ===== Архив ===== */
 .archive-badge{background:var(--msp-orange-light);color:var(--msp-orange);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;margin-left:8px}
 .archive-item{border-left:4px solid var(--msp-orange);background:linear-gradient(90deg,var(--msp-orange-light) 0%,#fff 40%)}
 .archive-item:hover{background:linear-gradient(90deg,#FFE8D6 0%,#fff 40%)}
+.prog-note{margin-top:6px;font-size:12px;color:var(--msp-gray);line-height:1.4}
+.prog-note.collapsed{max-height:40px;overflow:hidden;position:relative}
+.prog-note.collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:20px;background:linear-gradient(transparent,#fff)}
+.toggle-note{color:var(--msp-blue);cursor:pointer;font-size:11px;font-weight:600;margin-top:4px;display:inline-block}
+.toggle-note:hover{color:var(--msp-orange)}
+.app-card{border-left:4px solid var(--msp-blue);margin-bottom:10px}
+.app-card.archived{border-left-color:var(--msp-gray);opacity:.7}
 @media (max-width:640px){
   .wrap{padding:10px}
   .card{padding:12px;margin-bottom:10px}
@@ -223,7 +236,7 @@ function migrate(db){
   (db.users||[]).forEach(function(u){u.city=u.city||u.urm||'';u.region=u.region||'';});
   (db.companies||[]).forEach(function(c){c.contacts=c.contacts||[];c.apps=c.apps||[];c.neg=c.neg||[];c.okveds=c.okveds||[];
     c.contacts.forEach(function(ct){ct.primary=!!ct.primary;});
-    (c.apps||[]).forEach(function(a){a.history=a.history||[];});
+    (c.apps||[]).forEach(function(a){a.history=a.history||[];if(!a.archived)a.archived=false;});
     if(c.archived&&!c.archivedAt)c.archivedAt=Date.now();
   });
   return db;
@@ -242,7 +255,8 @@ function seedCompany(){return {id:'c1',inn:'7701234567',name:'ООО «Демо-
   contacts:[{id:'auto-dir',auto:true,primary:true,name:'Иванов Иван Иванович (демо)',pos:'Директор',phone:'+7 495 000-00-00',email:'info@demozavod.ru'}],
   apps:[{id:'a1',sum:50000000,term:6,program:'MKT',programName:'Рыночные условия',target:'Оборотное кредитование',
     empEmail:'',empPhone:'',status:'new',createdAt:Date.now(),managerId:'u1',managerName:'Хусаинов Рустем Рифович',comments:[],
-    history:[{action:'Создана',author:'Хусаинов Рустем Рифович',dt:Date.now(),details:'Сумма 50 000 000 ₽, срок 6 мес'}]}],
+    history:[{action:'Создана',author:'Хусаинов Рустем Рифович',dt:Date.now(),details:'Сумма 50 000 000 ₽, срок 6 мес'}],
+    archived:false,archivedAt:null}],
   taxes:null,msp:null,support:[],analysis:null};}
 var DB=load();
 function save(){localStorage.setItem('urm_db_v2',JSON.stringify(DB));}
@@ -496,7 +510,7 @@ function defaultNeg(msg){return negFromCompany({}).map(function(x){x.hit=false;x
 function negHtml(neg){
   if(!neg||!neg.length)return '';
   return '<h3>Негативные факторы банка</h3>'+neg.map(function(n){
-    return '<div class="neg '+(n.hit?'hit':'okf')+'">'+(n.hit?'️ ':'✔️ ')+esc(n.name)+' — '+esc(n.detail)+'</div>';}).join('');
+    return '<div class="neg '+(n.hit?'hit':'okf')+'">'+(n.hit?'⚠️ ':'✔️ ')+esc(n.name)+' — '+esc(n.detail)+'</div>';}).join('');
 }
 function autoContacts(n){
   var out=[];
@@ -547,7 +561,7 @@ function parseFinReport(j){
 }
 function fg(f,codes){
   if(!f)return null;
-  for(var i=0;i<codes.length;i++){var v=num(f[codes[i]]);if(v!=null)return v;}
+  for(var i=0;i<codes.length;i++){var v=num(f[codes[i]]);if(v!=null)return v/1000;}
   return null;
 }
 function calcFin(f){
@@ -619,7 +633,7 @@ async function loadAnalysis(cid){
 function conclusionHtml(o,p,c){
   var items=[];
   function add(cls,txt){items.push('<div class="neg '+(cls==='r'?'hit':cls==='g'?'okf':'warn')+'">'+txt+'</div>');}
-  if(o.equity!=null){(o.equity<0)?add('r','⚠️ Отрицательный капитал: '+fm(o.equity)+' тыс. ₽'):add('g','✔️ Собственный капитал положительный: '+fm(o.equity)+' тыс. ₽');}
+  if(o.equity!=null){(o.equity<0)?add('r','️ Отрицательный капитал: '+fm(o.equity)+' тыс. ₽'):add('g','✔️ Собственный капитал положительный: '+fm(o.equity)+' тыс. ₽');}
   if(o.aut!=null){
     if(o.aut>=0.5)add('g','✔️ Финансовая автономия '+fmtR(o.aut)+' (норма ≥ 0,5)');
     else if(o.aut>=0.3)add('y','⚠️ Автономия '+fmtR(o.aut)+' ниже нормы (≥ 0,5)');
@@ -632,11 +646,11 @@ function conclusionHtml(o,p,c){
   }
   if(o.ebitda!=null){
     if(o.ebitda>0)add('g','✔️ EBITDA положительная: '+fm(o.ebitda)+' тыс. ₽ (маржа '+pct(o.em)+')');
-    else add('r','️ EBITDA отрицательная: '+fm(o.ebitda)+' тыс. ₽');
+    else add('r','⚠️ EBITDA отрицательная: '+fm(o.ebitda)+' тыс. ₽');
     if(o.ebitda>0&&o.de!=null){
       if(o.de<=3)add('g','✔️ Долг / EBITDA = '+fmtR(o.de)+' (норма ≤ 3)');
       else if(o.de<=4)add('y','⚠️ Долг / EBITDA = '+fmtR(o.de)+' — выше нормы (≤ 3)');
-      else add('r','️ Высокая долговая нагрузка: Долг / EBITDA = '+fmtR(o.de));
+      else add('r','⚠️ Высокая долговая нагрузка: Долг / EBITDA = '+fmtR(o.de));
     }else if(o.ebitda<=0){add('r','⚠️ Долг / EBITDA не рассчитывается (EBITDA ≤ 0)');}
   }
   if(o.net!=null){(o.net>0)?add('g','✔️ Чистая прибыль: '+fm(o.net)+' тыс. ₽'):add('r','⚠️ Убыток: '+fm(o.net)+' тыс. ₽');}
@@ -666,7 +680,7 @@ function tabAnalysis(c){
   }
   html+='</div>';
   if(A.error){
-    html+='<div class="neg warn">️ Не удалось получить данные: '+esc(A.error)+'. Нажмите «Обновить анализ» — запрос повторится (в том числе через запасные каналы).</div>';
+    html+='<div class="neg warn">⚠️ Не удалось получить данные: '+esc(A.error)+'. Нажмите «Обновить анализ» — запрос повторится (в том числе через запасные каналы).</div>';
   }
   if(!years.length){
     html+='<div class="card mut">Бухгалтерская отчётность по этой компании не получена. Нажмите «Обновить анализ» позже или проверьте ИНН.</div>';
@@ -718,6 +732,8 @@ function tabAnalysis(c){
 }
 
 var state={view:'auth',tab:'info',cid:null,q:'',authTab:'login',archiveView:false,boss:{statuses:[],programs:[],regions:[],mgrs:[],urms:[],mode:'fio',q:''}};
+var navHistory=[];
+
 function render(){
   var u=currentUser();var app=document.getElementById('app');
   if(!u){app.innerHTML=viewAuth();return;}
@@ -729,6 +745,7 @@ function render(){
     return;
   }
   if(state.view==='archive'){app.innerHTML=topbar(u)+archiveHome(u);return;}
+  if(state.view==='appArchive'){app.innerHTML=topbar(u)+appArchiveHome(u);return;}
   state.view='home';app.innerHTML=topbar(u)+viewHome(u);
 }
 function showPWABanner(){
@@ -741,14 +758,30 @@ function showPWABanner(){
     setTimeout(function(){if(banner.parentElement)banner.classList.remove('show');localStorage.setItem(PWA_SHOWN_KEY,'true');},10000);
   }
 }
-function goHome(){state.view='home';state.archiveView=false;render();}
-function goArchive(){state.view='archive';state.archiveView=true;render();}
-function goSettings(){state.view='settings';render();}
+function goHome(){navHistory=[];state.view='home';state.archiveView=false;render();}
+function goArchive(){navHistory.push({view:state.view,cid:state.cid});state.view='archive';state.archiveView=true;render();}
+function goAppArchive(){navHistory.push({view:state.view,cid:state.cid});state.view='appArchive';render();}
+function goSettings(){navHistory.push({view:state.view,cid:state.cid});state.view='settings';render();}
+function goBack(){
+  if(navHistory.length>0){
+    var prev=navHistory.pop();
+    state.view=prev.view;
+    state.cid=prev.cid;
+    render();
+  }else{
+    goHome();
+  }
+}
 function setTab(t){state.tab=t;render();}
-function logout(){DB.session=null;save();state.view='auth';render();}
+function logout(){
+  if(confirm('Вы действительно хотите выйти из системы?')){
+    DB.session=null;save();state.view='auth';navHistory=[];render();
+  }
+}
 function openCompany(id){
   var u=currentUser();var c=getCompany(id);if(!c)return;
   if(u.role!=='boss'&&c.managerId!==u.id){toast('Компания недоступна');return;}
+  navHistory.push({view:state.view,cid:state.cid});
   state.cid=id;state.view='company';state.tab='info';render();
   if(c.okveds&&c.okveds.length&&c.okveds.some(function(o){return !o.name;})&&!c.namesTried){
     c.namesTried=true;save();refreshChecko(true);
@@ -816,6 +849,17 @@ document.addEventListener('click',function(e){
   }
 });
 
+function toggleNote(el){
+  var note=el.previousElementSibling;
+  if(note.classList.contains('collapsed')){
+    note.classList.remove('collapsed');
+    el.textContent='Свернуть ▲';
+  }else{
+    note.classList.add('collapsed');
+    el.textContent='Развернуть ▼';
+  }
+}
+
 function viewAuth(){
   var reg=state.authTab==='reg';
   return '<div class="auth"><div class="card">'+
@@ -824,20 +868,20 @@ function viewAuth(){
     '<div class="tabs" style="justify-content:center;border:none;margin-bottom:20px"><button class="btn '+(reg?'':'on')+'" onclick="goAuthTab(\'login\')">Вход</button>'+
     '<button class="btn '+(reg?'on':'')+'" onclick="goAuthTab(\'reg\')">Регистрация</button></div>'+
     (reg?
-    '<form onsubmit="return doRegister(event)" autocomplete="off">'+
-    '<label>Фамилия *</label><input id="rg-last" required placeholder="Фамилия" autocomplete="off">'+
-    '<div class="row"><div><label>Имя *</label><input id="rg-first" required placeholder="Имя" autocomplete="off"></div>'+
-    '<div><label>Отчество *</label><input id="rg-patr" required placeholder="Отчество" autocomplete="off"></div></div>'+
-    '<div class="row"><div><label>УРМ г. *</label><input id="rg-city" required placeholder="Например: Москва" autocomplete="off"></div>'+
+    '<form onsubmit="return doRegister(event)" autocomplete="off" data-lpignore="true">'+
+    '<label>Фамилия *</label><input id="rg-last" required placeholder="Фамилия" autocomplete="off" data-lpignore="true">'+
+    '<div class="row"><div><label>Имя *</label><input id="rg-first" required placeholder="Имя" autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Отчество *</label><input id="rg-patr" required placeholder="Отчество" autocomplete="off" data-lpignore="true"></div></div>'+
+    '<div class="row"><div><label>УРМ г. *</label><input id="rg-city" required placeholder="Например: Москва" autocomplete="off" data-lpignore="true"></div>'+
     '<div><label>Регион (ФО) *</label><select id="rg-region" required><option value="">— выберите регион —</option>'+
     REGIONS.map(function(r){return '<option value="'+esc(r)+'">'+esc(r)+'</option>';}).join('')+'</select></div></div>'+
     '<label>Роль *</label><select id="rg-role"><option value="manager">Региональный менеджер</option><option value="director">Региональный директор</option><option value="boss">Руководитель/Куратор</option></select>'+
-    '<div class="row"><div><label>Логин *</label><input id="rg-lg" required autocomplete="off"></div>'+
-    '<div><label>Пароль *</label><input id="rg-pw" type="password" required autocomplete="new-password"></div></div>'+
+    '<div class="row"><div><label>Логин *</label><input id="rg-lg" required autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Пароль *</label><input id="rg-pw" type="password" required autocomplete="new-password" data-lpignore="true"></div></div>'+
     '<button class="btn orange wide" style="margin-top:14px">Создать аккаунт</button></form>'
     :
-    '<form onsubmit="return doLogin(event)" autocomplete="off"><label>Логин</label><input id="lg" required autocomplete="off">'+
-    '<label>Пароль</label><input id="pw" type="password" required autocomplete="off">'+
+    '<form onsubmit="return doLogin(event)" autocomplete="off" data-lpignore="true"><label>Логин</label><input id="lg" required autocomplete="off" data-lpignore="true">'+
+    '<label>Пароль</label><input id="pw" type="password" required autocomplete="new-password" data-lpignore="true">'+
     '<button class="btn orange wide" style="margin-top:14px">Войти</button></form>'+
     '<div class="mut" style="margin-top:14px">Демо: manager / manager · boss / boss</div>')+
     '</div></div>';
@@ -846,7 +890,7 @@ function doLogin(e){e.preventDefault();
   var l=document.getElementById('lg').value.trim(),p=document.getElementById('pw').value;
   var u=DB.users.find(function(x){return x.login===l&&x.pass===p;});
   if(!u){toast('Неверный логин или пароль');return false;}
-  DB.session={userId:u.id};save();state.view='home';render();return false;}
+  DB.session={userId:u.id};save();state.view='home';navHistory=[];render();return false;}
 function doRegister(e){e.preventDefault();
   var g=function(id){return document.getElementById(id).value.trim();};
   var last=g('rg-last'),first=g('rg-first'),patr=g('rg-patr');
@@ -856,12 +900,13 @@ function doRegister(e){e.preventDefault();
   if(DB.users.find(function(x){return x.login===lg;})){toast('Логин занят');return false;}
   var nm=last+' '+first+' '+patr;
   DB.users.push({id:uid(),login:lg,pass:pw,role:role,name:nm,city:city,region:region});
-  DB.session={userId:DB.users[DB.users.length-1].id};save();state.view='home';render();
+  DB.session={userId:DB.users[DB.users.length-1].id};save();state.view='home';navHistory=[];render();
   toast('Аккаунт создан: '+roleTitle(role));return false;}
 
 function topbar(u){
-  return '<div class="topbar"><div class="logo-wrap" onclick="goHome()">'+logoSVG()+'<div class="logo-text">'+APP_NAME+'</div></div>'+
+  return '<div class="topbar"><div class="logo-wrap" onclick="goBack()">'+logoSVG()+'<div class="logo-text">'+APP_NAME+'</div></div>'+
     '<span class="usr"><b>'+esc(u.name)+'</b> · '+roleTitle(u.role)+(u.city?' · УРМ '+esc(u.city):'')+(u.region?' · '+esc(regionShort(u.region)):'')+'</span>'+
+    '<button class="btn gray sm" onclick="goBack()">← Назад</button>'+
     '<button class="btn gray sm" onclick="goHome()">Домой</button>'+
     '<button class="btn gray sm" onclick="goSettings()">Настройки</button>'+
     '<button class="btn gray sm" onclick="logout()">Выйти</button></div>';
@@ -869,7 +914,7 @@ function topbar(u){
 
 function viewHome(u){return u.role==='boss'?bossBoard(u):managerHome(u);}
 
-/* ===== АРХИВ ===== */
+/* ===== АРХИВ КОМПАНИЙ ===== */
 function archiveHome(u){
   var archivedList=DB.companies.filter(function(c){
     if(!c.archived)return false;
@@ -878,7 +923,7 @@ function archiveHome(u){
   });
   var html='<div class="card"><div class="card-header"><h2>🗄 Архив компаний</h2>'+
     '<button class="btn gray" onclick="goHome()">← Вернуться к активным</button></div>'+
-    '<div class="mut">Здесь хранятся компании, отправленные в архив. Их можно восстановить или удалить навсегда.</div></div>';
+    '<div class="mut">Здесь хранятся компании, отправленные в архив. Их можно восстановить.</div></div>';
   if(!archivedList.length){
     html+='<div class="card mut" style="text-align:center;padding:30px">Архив пуст</div>';
     return html;
@@ -895,13 +940,8 @@ function archiveHome(u){
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
       '<button class="btn sm green" onclick="restoreCompany(\''+c.id+'\')" title="Вернуть из архива">↩ Вернуть</button>'+
       '<button class="btn sm" onclick="openCompany(\''+c.id+'\')" title="Открыть карточку">Открыть</button>'+
-      '<button class="btn sm red" onclick="deleteCompanyForever(\''+c.id+'\')" title="Удалить навсегда">🗑 Удалить</button>'+
       '</div></div></div>';
   });
-  if(archivedList.length>0){
-    html+='<div class="card" style="background:#FEF3C7;border:1px solid #F59E0B"><div class="mut" style="color:#92400E">'+
-      '⚠️ <b>Внимание:</b> Удаление компании из архива необратимо. Все заявки, контакты и история будут удалены без возможности восстановления.</div></div>';
-  }
   return html;
 }
 function restoreCompany(id){
@@ -911,14 +951,6 @@ function restoreCompany(id){
   c.archivedAt=null;
   save();render();toast('Компания восстановлена из архива');
 }
-function deleteCompanyForever(id){
-  var c=getCompany(id);if(!c)return;
-  var appsCount=(c.apps||[]).length;
-  if(!confirm('УДАЛИТЬ НАВСЕГДА?\n\nКомпания: '+c.name+'\nИНН: '+c.inn+'\nЗаявок: '+appsCount+'\n\nЭто действие нельзя отменить!'))return;
-  if(!confirm('Вы уверены? Все данные компании будут удалены безвозвратно.'))return;
-  DB.companies=DB.companies.filter(function(x){return x.id!==id;});
-  save();render();toast('Компания удалена из архива навсегда');
-}
 function archiveCompany(id){
   var c=getCompany(id);if(!c)return;
   if(!confirm('Отправить компанию «'+c.name+'» в архив?\n\nЕё можно будет восстановить из раздела «Архив».'))return;
@@ -927,21 +959,76 @@ function archiveCompany(id){
   save();render();toast('Компания отправлена в архив');
 }
 
+/* ===== АРХИВ ЗАЯВОК ===== */
+function appArchiveHome(u){
+  var archivedApps=[];
+  DB.companies.forEach(function(c){
+    if(u.role!=='boss'&&c.managerId!==u.id)return;
+    (c.apps||[]).forEach(function(a){
+      if(a.archived)archivedApps.push({c:c,a:a});
+    });
+  });
+  var html='<div class="card"><div class="card-header"><h2>🗄 Архив заявок</h2>'+
+    '<button class="btn gray" onclick="goHome()">← Вернуться к активным</button></div>'+
+    '<div class="mut">Здесь хранятся заявки, отправленные в архив. Их можно восстановить.</div></div>';
+  if(!archivedApps.length){
+    html+='<div class="card mut" style="text-align:center;padding:30px">Архив заявок пуст</div>';
+    return html;
+  }
+  html+='<div class="mut" style="margin:10px 0">Всего в архиве: <b>'+archivedApps.length+'</b></div>';
+  archivedApps.forEach(function(pa){
+    var c=pa.c,a=pa.a;
+    var archivedDate=a.archivedAt?fmtDateTime(a.archivedAt):'неизвестно';
+    html+='<div class="card archive-item"><div class="row" style="align-items:center">'+
+      '<div style="flex:3;min-width:200px"><h3 style="margin:0">'+esc(a.programName||progNameById(a.program))+' — '+fmtMoney(a.sum)+' <span class="archive-badge">В АРХИВЕ</span></h3>'+
+      '<div class="mut">Компания: '+esc(c.name)+' · ИНН '+esc(c.inn)+' · '+a.term+' мес · '+stName(a.status)+'</div>'+
+      '<div class="mut">Отправлена в архив: '+archivedDate+' · Сотрудник: '+esc(a.managerName||mgrName(c.managerId))+'</div></div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+      '<button class="btn sm green" onclick="restoreApp(\''+c.id+'\',\''+a.id+'\')" title="Вернуть из архива">↩ Вернуть</button>'+
+      '<button class="btn sm" onclick="openCompany(\''+c.id+'\')" title="Открыть карточку">Открыть</button>'+
+      '</div></div></div>';
+  });
+  return html;
+}
+function restoreApp(cid,aid){
+  var c=getCompany(cid);if(!c)return;
+  var a=c.apps.find(function(x){return x.id===aid;});if(!a)return;
+  if(!confirm('Вернуть заявку из архива?'))return;
+  a.archived=false;
+  a.archivedAt=null;
+  save();render();toast('Заявка восстановлена из архива');
+}
+function archiveApp(cid,aid){
+  var c=getCompany(cid);if(!c)return;
+  var a=c.apps.find(function(x){return x.id===aid;});if(!a)return;
+  if(!confirm('Отправить заявку в архив?\n\nЕё можно будет восстановить из раздела «Архив заявок».'))return;
+  a.archived=true;
+  a.archivedAt=Date.now();
+  a.history=a.history||[];
+  a.history.push({action:'Заявка отправлена в архив',author:currentUser().name,dt:Date.now()});
+  save();render();toast('Заявка отправлена в архив');
+}
+
 function managerHome(u){
   var q=state.q.toLowerCase();
   var list=DB.companies.filter(function(c){return c.managerId===u.id&&!c.archived;})
     .filter(function(c){return !q||(c.name||'').toLowerCase().indexOf(q)>=0||(c.inn||'').indexOf(q)>=0;});
   var archivedCount=DB.companies.filter(function(c){return c.managerId===u.id&&c.archived;}).length;
+  var archivedAppsCount=0;
+  DB.companies.filter(function(c){return c.managerId===u.id;}).forEach(function(c){
+    (c.apps||[]).forEach(function(a){if(a.archived)archivedAppsCount++;});
+  });
   var html='<div class="card"><div class="card-header"><h2>Мои компании</h2>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn orange" onclick="newCompanyModal()">+ Компания</button>'+
-    '<button class="btn gray" onclick="goArchive()">🗄 Архив'+(archivedCount?' ('+archivedCount+')':'')+'</button>'+
+    '<button class="btn gray" onclick="goArchive()">🗄 Архив комп.'+(archivedCount?' ('+archivedCount+')':'')+'</button>'+
+    '<button class="btn gray" onclick="goAppArchive()">🗄 Архив заявок'+(archivedAppsCount?' ('+archivedAppsCount+')':'')+'</button>'+
     '</div></div>'+
-    '<input id="q-mgr" placeholder="Поиск: название или ИНН" value="'+esc(state.q)+'" oninput="setQ(this.value)" autocomplete="off"></div>';
+    '<input id="q-mgr" placeholder="Поиск: название или ИНН" value="'+esc(state.q)+'" oninput="setQ(this.value)" autocomplete="off" data-lpignore="true"></div>';
   if(!list.length)html+='<div class="card mut" style="text-align:center;padding:30px">Компаний нет. Нажмите «+ Компания».</div>';
   list.forEach(function(c){
     var pref=isPreferential(c);
-    var apps=c.apps.filter(function(a){return a.status!=='declined'&&a.status!=='canceled';}).length;
+    var apps=c.apps.filter(function(a){return a.status!=='declined'&&a.status!=='canceled'&&!a.archived;}).length;
     var negHit=(c.neg||[]).filter(function(n){return n.hit;}).length;
     var pc=getPrimaryContact(c);
     html+='<div class="card"><div class="row" style="align-items:center">'+
@@ -963,7 +1050,7 @@ function managerHome(u){
 function scopedManagers(){return DB.users.filter(function(x){return x.role==='manager'||x.role==='director';});}
 function appPairs(u){
   var pairs=[];
-  DB.companies.forEach(function(c){(c.apps||[]).forEach(function(a){pairs.push({c:c,a:a});});});
+  DB.companies.forEach(function(c){(c.apps||[]).forEach(function(a){if(!a.archived)pairs.push({c:c,a:a});});});
   var f=state.boss;
   return pairs.filter(function(p){
     if(f.statuses.length&&f.statuses.indexOf(p.a.status)<0)return false;
@@ -980,9 +1067,11 @@ function cityList(){
   return res;
 }
 function bossBoard(u){
-  var all=[];DB.companies.forEach(function(c){(c.apps||[]).forEach(function(a){all.push({c:c,a:a});});});
+  var all=[];DB.companies.forEach(function(c){(c.apps||[]).forEach(function(a){if(!a.archived)all.push({c:c,a:a});});});
   var pairs=appPairs(u);var f=state.boss;
   var archivedCount=DB.companies.filter(function(c){return c.archived;}).length;
+  var archivedAppsCount=0;
+  DB.companies.forEach(function(c){(c.apps||[]).forEach(function(a){if(a.archived)archivedAppsCount++;});});
   var html='<div class="card"><h2>Заявки всех сотрудников</h2><div class="row" style="margin-top:10px">';
   STATUSES.forEach(function(s){
     var n=all.filter(function(p){return p.a.status===s.id;}).length;
@@ -997,7 +1086,7 @@ function bossBoard(u){
     '<select onchange="setBossMode(this.value)" autocomplete="off">'+
     '<option value="fio" '+(f.mode==='fio'?'selected':'')+'>Выбор сотрудников: по ФИО</option>'+
     '<option value="urm" '+(f.mode==='urm'?'selected':'')+'>Выбор сотрудников: по УРМ (городу)</option></select>'+
-    '<input id="q-boss" placeholder="Поиск компании / ИНН" value="'+esc(f.q)+'" oninput="setBossQ(this.value)" autocomplete="off"></div>';
+    '<input id="q-boss" placeholder="Поиск компании / ИНН" value="'+esc(f.q)+'" oninput="setBossQ(this.value)" autocomplete="off" data-lpignore="true"></div>';
   if(f.mode==='fio'){
     html+='<label style="margin-top:12px">Сотрудники (ФИО)</label>';
     scopedManagers().forEach(function(m){
@@ -1011,7 +1100,8 @@ function bossBoard(u){
   }
   html+='<hr style="margin:14px 0"><div style="display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn green" onclick="exportApps()">⬇ Отчёт Excel</button>'+
-    '<button class="btn gray" onclick="goArchive()">🗄 Архив'+(archivedCount?' ('+archivedCount+')':'')+'</button>'+
+    '<button class="btn gray" onclick="goArchive()">🗄 Архив комп.'+(archivedCount?' ('+archivedCount+')':'')+'</button>'+
+    '<button class="btn gray" onclick="goAppArchive()">🗄 Архив заявок'+(archivedAppsCount?' ('+archivedAppsCount+')':'')+'</button>'+
     '</div></div>';
   html+='<div class="card tbl"><table><tr><th>Компания</th><th>ИНН</th><th>Осн. ОКВЭД</th><th>Программа</th><th>Цель</th><th>Сумма</th><th>Срок</th><th>Статус</th><th>Сотрудник</th><th>УРМ</th><th>Регион</th><th>Создана</th><th>История изменений</th></tr>';
   if(!pairs.length)html+='<tr><td colspan="13" class="mut">Ничего не найдено</td></tr>';
@@ -1107,10 +1197,12 @@ function tabOkved(c){
   lines.forEach(function(L){
     var p=L.p,m=L.m;
     var note=p.note+(p.allowAdd?' (проверяется также доп. ОКВЭД компании)':'');
+    var noteId='note-'+p.id+'-'+Math.random().toString(36).slice(2,6);
     html+='<div class="prog-line '+(m?'yes':'')+'">'+(m?'<span style="color:var(--msp-orange);font-size:18px">✔</span>':'<span style="color:var(--msp-gray);font-size:18px">✖</span>')+'<div><b>📄 '+esc(p.sheet)+'</b> '+
       (m&&m.via==='add'?'<span class="pill yellow">доп. ОКВЭД</span>':'')+
-      '<div class="mut">'+esc(note)+'</div>'+
-      '<div class="mut">'+(m?(m.via==='main'?('соответствие по основному ОКВЭД '+m.matched):('соответствие по ДОПОЛНИТЕЛЬНОМУ ОКВЭД '+m.matched+' — программа «'+esc(p.sheet)+'» доступна при доп. ОКВЭД')):'соответствия нет')+'</div></div></div>';
+      '<div class="prog-note collapsed" id="'+noteId+'">'+esc(note)+'</div>'+
+      '<span class="toggle-note" onclick="toggleNote(this)">Развернуть ▼</span>'+
+      '<div class="mut" style="margin-top:4px">'+(m?(m.via==='main'?('соответствие по основному ОКВЭД '+m.matched):('соответствие по ДОПОЛНИТЕЛЬНОМУ ОКВЭД '+m.matched+' — программа «'+esc(p.sheet)+'» доступна при доп. ОКВЭД')):'соответствия нет')+'</div></div></div>';
   });
   if(matches.length)html+='<div class="ok" style="margin-top:10px;color:#166534;font-weight:700">✔ Доступны льготные программы: '+matches.map(function(x){return x.prog.sheet+(x.via==='add'?' (доп. ОКВЭД)':'');}).join('; ')+'</div>';
   else if(excl)html+='<div class="no" style="margin-top:10px;color:#991B1B;font-weight:700">✘ ОКВЭД нужно исключать: льготные программы недоступны, заявки принимаются на рыночных условиях.</div>';
@@ -1134,21 +1226,23 @@ function tabApps(u,c){
   var matches=programMatches(c);
   var html='<div class="card"><h3>Новая заявка</h3>';
   if(matches.length)html+='<div class="neg okf">✔ Основной ОКВЭД соответствует льготным программам: '+matches.map(function(x){return x.prog.sheet+(x.via==='add'?' (доп. ОКВЭД)':'');}).join('; ')+'</div>';
-  else if(isExclude(mainCode(c)))html+='<div class="neg hit">️ ОКВЭД нужно исключать: льготные программы недоступны, заявка будет на рыночных условиях</div>';
+  else if(isExclude(mainCode(c)))html+='<div class="neg hit">⚠️ ОКВЭД нужно исключать: льготные программы недоступны, заявка будет на рыночных условиях</div>';
   else html+='<div class="neg warn">Льготных соответствий нет — программа выбирается вручную (доступны рыночные условия)</div>';
-  html+='<form onsubmit="return addApp(event)" autocomplete="off"><div class="row" style="margin-top:10px">'+
-    '<div><label>Сумма, ₽</label><input id="ap-sum" type="number" min="1" required autocomplete="off"></div>'+
+  html+='<form onsubmit="return addApp(event)" autocomplete="off" data-lpignore="true"><div class="row" style="margin-top:10px">'+
+    '<div><label>Сумма, ₽</label><input id="ap-sum" type="number" min="1" required autocomplete="off" data-lpignore="true"></div>'+
     '<div><label>Срок</label><select id="ap-term">'+[6,12,18,24,36].map(function(t){return '<option value="'+t+'">'+t+' мес</option>';}).join('')+'</select></div></div>'+
     '<div class="row"><div><label>Программа</label><select id="ap-prog">'+opts.map(function(o){return '<option value="'+o.id+'">'+esc(progLabel(o))+'</option>';}).join('')+'</select></div>'+
     '<div><label>Целевое использование</label><select id="ap-target">'+TARGETS.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div></div>'+
-    '<div class="row"><div><label>E-mail аналитика</label><input id="ap-ee" autocomplete="off"></div>'+
-    '<div><label>Тел. аналитика</label><input id="ap-ep" autocomplete="off"></div></div>'+
+    '<div class="row"><div><label>E-mail аналитика</label><input id="ap-ee" autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Тел. аналитика</label><input id="ap-ep" autocomplete="off" data-lpignore="true"></div></div>'+
     '<button class="btn orange" style="margin-top:12px">Создать заявку</button></form></div>';
   (c.apps||[]).slice().reverse().forEach(function(a){
-    html+='<div class="card"><div class="card-header"><div><h3 style="margin:0">'+esc(a.programName||progNameById(a.program))+' — '+fmtMoney(a.sum)+'</h3>'+
-      '<div class="mut">'+a.term+' мес · цель: '+esc(a.target||'—')+' · создана '+fmtDate(a.createdAt)+' · '+esc(a.managerName||mgrName(a.managerId))+'</div></div><div>'+stPill(a.status)+'</div></div>'+
+    if(a.archived)return;
+    html+='<div class="card app-card"><div class="card-header"><div><h3 style="margin:0">'+esc(a.programName||progNameById(a.program))+' — '+fmtMoney(a.sum)+'</h3>'+
+      '<div class="mut">'+a.term+' мес · цель: '+esc(a.target||'—')+' · создана '+fmtDate(a.createdAt)+' · '+esc(a.managerName||mgrName(c.managerId))+'</div></div><div>'+stPill(a.status)+'</div></div>'+
       '<div class="mut">Аналитик: '+(a.empEmail||a.empPhone?emailLinks(a.empEmail)+' '+phoneLinks(a.empPhone):'— —')+'</div>'+
       '<div style="margin-top:10px"><button class="btn sm" onclick="openEditApp(\''+a.id+'\')">✏️ Редактировать</button>'+
+      '<button class="btn sm gray" onclick="archiveApp(\''+c.id+'\',\''+a.id+'\')" title="В архив">🗄 В архив</button>'+
       '<label style="margin-left:10px;display:inline-block">Статус заявки:</label>'+
       '<select style="max-width:260px;display:inline-block;margin-left:6px" onchange="setStatus(\''+a.id+'\',this.value)" autocomplete="off">'+
       STATUSES.map(function(s){return '<option value="'+s.id+'" '+(a.status===s.id?'selected':'')+'>'+s.name+'</option>';}).join('')+
@@ -1161,18 +1255,27 @@ function tabApps(u,c){
     }
     html+='<hr style="margin:12px 0"><div class="mut"><b>Комментарии</b></div>'+
       (a.comments||[]).map(function(cm){return '<div style="margin:6px 0;padding:8px 10px;background:var(--msp-gray-light);border-radius:8px;border-left:3px solid var(--msp-orange)"><b>'+esc(cm.author)+'</b> <span class="mut">'+fmtDate(cm.dt)+'</span><div style="margin-top:4px">'+esc(cm.text)+'</div></div>';}).join('')+
-      '<textarea id="cm-'+a.id+'" placeholder="Новый комментарий" rows="2" autocomplete="off"></textarea>'+
+      '<textarea id="cm-'+a.id+'" placeholder="Новый комментарий" rows="2" autocomplete="off" data-lpignore="true"></textarea>'+
       '<button class="btn sm orange" onclick="addComment(\''+a.id+'\')">Добавить комментарий</button></div>';
   });
-  if(!(c.apps||[]).length)html+='<div class="card mut" style="text-align:center;padding:20px">Заявок пока нет.</div>';
+  var archivedApps=c.apps.filter(function(a){return a.archived;});
+  if(archivedApps.length){
+    html+='<hr style="margin:14px 0"><h3>Архивные заявки ('+archivedApps.length+')</h3>';
+    archivedApps.forEach(function(a){
+      html+='<div class="card app-card archived"><div class="card-header"><div><h3 style="margin:0">'+esc(a.programName||progNameById(a.program))+' — '+fmtMoney(a.sum)+' <span class="archive-badge">В АРХИВЕ</span></h3>'+
+        '<div class="mut">'+a.term+' мес · цель: '+esc(a.target||'—')+' · создана '+fmtDate(a.createdAt)+' · в архиве: '+fmtDateTime(a.archivedAt)+'</div></div><div>'+stPill(a.status)+'</div></div>'+
+        '<div style="margin-top:10px"><button class="btn sm green" onclick="restoreApp(\''+c.id+'\',\''+a.id+'\')">↩ Вернуть из архива</button></div></div>';
+    });
+  }
+  if(!(c.apps||[]).filter(function(a){return !a.archived;}).length)html+='<div class="card mut" style="text-align:center;padding:20px">Заявок пока нет.</div>';
   return html;
 }
 function tabContacts(c){
   var sorted=(c.contacts||[]).slice().sort(function(a,b){return (b.primary?1:0)-(a.primary?1:0);});
   var html='<div class="card"><h3>Контактные лица</h3>'+
-    '<form onsubmit="return addContact(event)" autocomplete="off"><div class="row" style="margin-top:10px">'+
-    '<div><label>ФИО</label><input id="ct-nm" required autocomplete="off"></div><div><label>Должность</label><input id="ct-ps" autocomplete="off"></div>'+
-    '<div><label>Телефон</label><input id="ct-ph" placeholder="+7 900 000-00-00" autocomplete="off"></div><div><label>E-mail</label><input id="ct-em" placeholder="name@mail.ru" autocomplete="off"></div></div>'+
+    '<form onsubmit="return addContact(event)" autocomplete="off" data-lpignore="true"><div class="row" style="margin-top:10px">'+
+    '<div><label>ФИО</label><input id="ct-nm" required autocomplete="off" data-lpignore="true"></div><div><label>Должность</label><input id="ct-ps" autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Телефон</label><input id="ct-ph" placeholder="+7 900 000-00-00" autocomplete="off" data-lpignore="true"></div><div><label>E-mail</label><input id="ct-em" placeholder="name@mail.ru" autocomplete="off" data-lpignore="true"></div></div>'+
     '<label class="chk" style="max-width:220px;margin-top:8px"><input type="checkbox" id="ct-main">Основной контакт</label>'+
     '<button class="btn sm orange" style="margin-top:10px">Добавить контакт</button></form><hr style="margin:14px 0">';
   if(!sorted.length)html+='<div class="mut">Контактных лиц пока нет — добавьте первый контакт.</div>';
@@ -1229,7 +1332,8 @@ function addApp(e){e.preventDefault();var c=getCompany(state.cid);
   var newApp={id:uid(),sum:sum,term:parseInt(g('ap-term'),10)||12,program:prog,programName:progNameById(prog),target:g('ap-target'),
     empEmail:g('ap-ee').trim(),empPhone:g('ap-ep').trim(),
     status:'new',createdAt:Date.now(),managerId:c.managerId,managerName:currentUser().name,comments:[],
-    history:[{action:'Заявка создана',author:currentUser().name,dt:Date.now(),details:'Сумма '+fmtMoney(sum)+', срок '+g('ap-term')+' мес, программа '+progNameById(prog)}]};
+    history:[{action:'Заявка создана',author:currentUser().name,dt:Date.now(),details:'Сумма '+fmtMoney(sum)+', срок '+g('ap-term')+' мес, программа '+progNameById(prog)}],
+    archived:false,archivedAt:null};
   c.apps.push(newApp);
   save();render();toast('Заявка создана');return false;}
 function openEditApp(aid){
@@ -1238,14 +1342,14 @@ function openEditApp(aid){
   if(!a)return;
   var opts=allProgramOptions();
   var html='<h3>Редактирование заявки</h3>'+
-    '<div class="row"><div><label>Сумма, ₽</label><input id="ed-sum" type="number" min="1" value="'+a.sum+'" autocomplete="off"></div>'+
-    '<div><label>Срок, мес</label><select id="ed-term">'+[6,12,18,24,36].map(function(t){return '<option value="'+t+'" '+(a.term==t?'selected':'')+'>'+t+' мес</option>';}).join('')+'</select></div></div>'+
+    '<div class="row"><div><label>Сумма, ₽</label><input id="ed-sum" type="number" min="1" value="'+a.sum+'" autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Срок, мес</label><select id="ed-term">'+[6,12,18,24,36].map(function(t){return '<option value="'+t+'" '+(a.term==t?'selected':'')+'">'+t+' мес</option>';}).join('')+'</select></div></div>'+
     '<div class="row"><div><label>Программа</label><select id="ed-prog">'+opts.map(function(o){return '<option value="'+o.id+'" '+(a.program===o.id?'selected':'')+'>'+esc(progLabel(o))+'</option>';}).join('')+'</select></div>'+
     '<div><label>Целевое использование</label><select id="ed-target">'+TARGETS.map(function(t){return '<option '+(a.target===t?'selected':'')+'>'+t+'</option>';}).join('')+'</select></div></div>'+
-    '<div class="row"><div><label>E-mail аналитика</label><input id="ed-ee" value="'+esc(a.empEmail||'')+'" autocomplete="off"></div>'+
-    '<div><label>Тел. аналитика</label><input id="ed-ep" value="'+esc(a.empPhone||'')+'" autocomplete="off"></div></div>'+
+    '<div class="row"><div><label>E-mail аналитика</label><input id="ed-ee" value="'+esc(a.empEmail||'')+'" autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Тел. аналитика</label><input id="ed-ep" value="'+esc(a.empPhone||'')+'" autocomplete="off" data-lpignore="true"></div></div>'+
     '<label>Статус</label><select id="ed-status" autocomplete="off">'+STATUSES.map(function(s){return '<option value="'+s.id+'" '+(a.status===s.id?'selected':'')+'>'+s.name+'</option>';}).join('')+'</select>'+
-    '<label>Новый комментарий</label><textarea id="ed-cmt" rows="3" placeholder="Добавить комментарий..." autocomplete="off"></textarea>'+
+    '<label>Новый комментарий</label><textarea id="ed-cmt" rows="3" placeholder="Добавить комментарий..." autocomplete="off" data-lpignore="true"></textarea>'+
     '<div style="margin-top:14px"><button class="btn orange" onclick="saveEditApp(\''+a.id+'\')">💾 Сохранить</button> '+
     '<button class="btn gray" onclick="closeModal()">Отмена</button></div>';
   modal(html);
@@ -1292,15 +1396,15 @@ function modal(html){document.getElementById('mbox').innerHTML=html;document.get
 function closeModal(){document.getElementById('modal').style.display='none';}
 function newCompanyModal(){
   window._neg=[];window._norm=null;
-  modal('<h3>Новая компания</h3><div class="row" style="margin-top:10px"><div style="flex:2"><label>ИНН</label><input id="nc-inn" placeholder="10 или 12 цифр" autocomplete="off"></div>'+
+  modal('<h3>Новая компания</h3><div class="row" style="margin-top:10px"><div style="flex:2"><label>ИНН</label><input id="nc-inn" placeholder="10 или 12 цифр" autocomplete="off" data-lpignore="true"></div>'+
     '<div style="flex:1;display:flex;align-items:flex-end"><button class="btn orange" type="button" onclick="queryCheck()">Проверить ИНН</button></div></div>'+
-    '<div id="nc-out" class="mut" style="margin-top:8px"></div><div id="nc-neg"></div><hr style="margin:14px 0"><form onsubmit="return createCompany(event)" autocomplete="off">'+
-    '<label>Название</label><input id="nc-name" required autocomplete="off"><div class="row">'+
-    '<div><label>КПП</label><input id="nc-kpp" autocomplete="off"></div><div><label>ОГРН</label><input id="nc-ogrn" autocomplete="off"></div><div><label>Капитал</label><input id="nc-cap" autocomplete="off"></div></div>'+
-    '<label>Адрес</label><input id="nc-addr" autocomplete="off"><div class="row">'+
-    '<div><label>E-mail (через запятую)</label><input id="nc-em" autocomplete="off"></div><div><label>Телефоны (через запятую)</label><input id="nc-ph" autocomplete="off"></div></div>'+
-    '<div class="row"><div><label>Основной ОКВЭД</label><input id="nc-okv" required autocomplete="off"></div>'+
-    '<div><label>Доп. ОКВЭД (через запятую)</label><input id="nc-okvadd" autocomplete="off"></div></div>'+
+    '<div id="nc-out" class="mut" style="margin-top:8px"></div><div id="nc-neg"></div><hr style="margin:14px 0"><form onsubmit="return createCompany(event)" autocomplete="off" data-lpignore="true">'+
+    '<label>Название</label><input id="nc-name" required autocomplete="off" data-lpignore="true"><div class="row">'+
+    '<div><label>КПП</label><input id="nc-kpp" autocomplete="off" data-lpignore="true"></div><div><label>ОГРН</label><input id="nc-ogrn" autocomplete="off" data-lpignore="true"></div><div><label>Капитал</label><input id="nc-cap" autocomplete="off" data-lpignore="true"></div></div>'+
+    '<label>Адрес</label><input id="nc-addr" autocomplete="off" data-lpignore="true"><div class="row">'+
+    '<div><label>E-mail (через запятую)</label><input id="nc-em" autocomplete="off" data-lpignore="true"></div><div><label>Телефоны (через запятую)</label><input id="nc-ph" autocomplete="off" data-lpignore="true"></div></div>'+
+    '<div class="row"><div><label>Основной ОКВЭД</label><input id="nc-okv" required autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Доп. ОКВЭД (через запятую)</label><input id="nc-okvadd" autocomplete="off" data-lpignore="true"></div></div>'+
     '<button class="btn orange" style="margin-top:14px">Создать компанию</button> <button class="btn gray" type="button" onclick="closeModal()">Отмена</button></form>');
 }
 async function queryCheck(){
@@ -1397,16 +1501,16 @@ function exportCompanyWord(cid){
 }
 function viewSettingsManager(u){
   return '<div class="card"><h2>Мои настройки</h2>'+
-    '<form onsubmit="return saveManagerProfile(event)" autocomplete="off">'+
-    '<label>Фамилия *</label><input id="mp-last" required value="'+esc((u.name||'').split(' ')[0]||'')+'" autocomplete="off">'+
-    '<div class="row"><div><label>Имя *</label><input id="mp-first" required value="'+esc((u.name||'').split(' ')[1]||'')+'" autocomplete="off"></div>'+
-    '<div><label>Отчество *</label><input id="mp-patr" required value="'+esc((u.name||'').split(' ')[2]||'')+'" autocomplete="off"></div></div>'+
-    '<div class="row"><div><label>УРМ г. *</label><input id="mp-city" required value="'+esc(u.city||'')+'" autocomplete="off"></div>'+
+    '<form onsubmit="return saveManagerProfile(event)" autocomplete="off" data-lpignore="true">'+
+    '<label>Фамилия *</label><input id="mp-last" required value="'+esc((u.name||'').split(' ')[0]||'')+'" autocomplete="off" data-lpignore="true">'+
+    '<div class="row"><div><label>Имя *</label><input id="mp-first" required value="'+esc((u.name||'').split(' ')[1]||'')+'" autocomplete="off" data-lpignore="true"></div>'+
+    '<div><label>Отчество *</label><input id="mp-patr" required value="'+esc((u.name||'').split(' ')[2]||'')+'" autocomplete="off" data-lpignore="true"></div></div>'+
+    '<div class="row"><div><label>УРМ г. *</label><input id="mp-city" required value="'+esc(u.city||'')+'" autocomplete="off" data-lpignore="true"></div>'+
     '<div><label>Регион (ФО) *</label><select id="mp-region" required autocomplete="off"><option value="">— выберите —</option>'+REGIONS.map(function(r){return '<option value="'+esc(r)+'" '+(u.region===r?'selected':'')+'>'+esc(r)+'</option>';}).join('')+'</select></div></div>'+
     '<button class="btn orange sm" style="margin-top:12px">Сохранить профиль</button></form><hr style="margin:16px 0">'+
-    '<h3>Сменить пароль</h3><form onsubmit="return changePass(event)" autocomplete="off"><div class="row">'+
-    '<div><label>Старый пароль</label><input id="cp-old" type="password" required autocomplete="new-password"></div>'+
-    '<div><label>Новый пароль</label><input id="cp-new" type="password" required autocomplete="new-password"></div></div><button class="btn orange sm" style="margin-top:12px">Сменить пароль</button></form></div>';
+    '<h3>Сменить пароль</h3><form onsubmit="return changePass(event)" autocomplete="off" data-lpignore="true"><div class="row">'+
+    '<div><label>Старый пароль</label><input id="cp-old" type="password" required autocomplete="new-password" data-lpignore="true"></div>'+
+    '<div><label>Новый пароль</label><input id="cp-new" type="password" required autocomplete="new-password" data-lpignore="true"></div></div><button class="btn orange sm" style="margin-top:12px">Сменить пароль</button></form></div>';
 }
 function saveManagerProfile(e){e.preventDefault();
   var u=currentUser();
@@ -1429,16 +1533,16 @@ function viewSettingsBoss(u){
     '<div class="tbl" style="margin-top:10px"><table><tr><th>Лист (программа)</th><th>Кодов «ДА»</th><th>«ДА/НЕТ»</th><th>«Исключать»</th><th>Доп. ОКВЭД</th></tr>'+
     PROGRAMS.map(function(p){return '<tr><td>'+esc(p.sheet)+'</td><td>'+p.setMain.size+'</td><td>'+p.setAdd.size+'</td><td>'+p.setExcl.size+'</td><td>'+(p.allowAdd?'да':'нет')+'</td></tr>';}).join('')+
     '</table></div><hr style="margin:14px 0">'+
-    '<h3>Сменить мой пароль</h3><form onsubmit="return changePass(event)" autocomplete="off"><div class="row">'+
-    '<div><label>Старый пароль</label><input id="cp-old" type="password" required autocomplete="new-password"></div>'+
-    '<div><label>Новый пароль</label><input id="cp-new" type="password" required autocomplete="new-password"></div></div><button class="btn orange sm" style="margin-top:12px">Сменить пароль</button></form><hr style="margin:14px 0">'+
-    '<h3>Сотрудники (менеджеры и директора)</h3><form onsubmit="return addManager(event)" autocomplete="off">'+
-    '<label>Фамилия *</label><input id="am-last" required autocomplete="off">'+
-    '<div class="row"><div><label>Имя *</label><input id="am-first" required autocomplete="off"></div><div><label>Отчество *</label><input id="am-patr" required autocomplete="off"></div></div>'+
-    '<div class="row"><div><label>УРМ г. *</label><input id="am-city" required autocomplete="off"></div>'+
+    '<h3>Сменить мой пароль</h3><form onsubmit="return changePass(event)" autocomplete="off" data-lpignore="true"><div class="row">'+
+    '<div><label>Старый пароль</label><input id="cp-old" type="password" required autocomplete="new-password" data-lpignore="true"></div>'+
+    '<div><label>Новый пароль</label><input id="cp-new" type="password" required autocomplete="new-password" data-lpignore="true"></div></div><button class="btn orange sm" style="margin-top:12px">Сменить пароль</button></form><hr style="margin:14px 0">'+
+    '<h3>Сотрудники (менеджеры и директора)</h3><form onsubmit="return addManager(event)" autocomplete="off" data-lpignore="true">'+
+    '<label>Фамилия *</label><input id="am-last" required autocomplete="off" data-lpignore="true">'+
+    '<div class="row"><div><label>Имя *</label><input id="am-first" required autocomplete="off" data-lpignore="true"></div><div><label>Отчество *</label><input id="am-patr" required autocomplete="off" data-lpignore="true"></div></div>'+
+    '<div class="row"><div><label>УРМ г. *</label><input id="am-city" required autocomplete="off" data-lpignore="true"></div>'+
     '<div><label>Регион (ФО) *</label><select id="am-region" required autocomplete="off"><option value="">— выберите —</option>'+REGIONS.map(function(r){return '<option value="'+esc(r)+'">'+esc(r)+'</option>';}).join('')+'</select></div></div>'+
     '<div class="row"><div><label>Роль</label><select id="am-role" autocomplete="off"><option value="manager">Региональный менеджер</option><option value="director">Региональный директор</option></select></div>'+
-    '<div><label>Логин</label><input id="am-lg" required autocomplete="off"></div><div><label>Пароль</label><input id="am-pw" required autocomplete="new-password"></div></div>'+
+    '<div><label>Логин</label><input id="am-lg" required autocomplete="off" data-lpignore="true"></div><div><label>Пароль</label><input id="am-pw" required autocomplete="new-password" data-lpignore="true"></div></div>'+
     '<button class="btn orange sm" style="margin-top:12px">Добавить сотрудника</button></form><hr style="margin:14px 0">';
   scopedManagers().forEach(function(m){
     var n=DB.companies.filter(function(c){return c.managerId===m.id;}).length;
@@ -1515,20 +1619,9 @@ function makeIcon(){
   var a=document.createElement('link');a.rel='apple-touch-icon';a.href=url;document.head.appendChild(a);
   return url;
 }
-function initPWA(icon){
-  try{
-    var mf={name:APP_NAME_PLAIN,short_name:'УРМ',start_url:'.',display:'standalone',
-      background_color:'#F5F7FA',theme_color:'#0055A5',icons:[{src:icon,sizes:'64x64',type:'image/png'}]};
-    var l=document.createElement('link');l.rel='manifest';
-    l.href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/json'}));
-    document.head.appendChild(l);
-  }catch(e){}
-  if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.js').catch(function(){});
-  }
+if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0){
+  navigator.serviceWorker.register('sw.js').catch(function(){});
 }
-var ICON=makeIcon();
-initPWA(ICON);
 render();
 </script>
 </body>
