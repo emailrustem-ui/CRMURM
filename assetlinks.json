@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.emailrustem_ui.twa",
+        "sha256_cert_fingerprints": ["2B:F9:F0:04:36:0F:59:8D:7C:4F:82:9D:95:E1:36:FE:85:98:AC:8A:82:DE:7E:39:A8:E2:DA:82:6A:77:B5:A4"]
+      }
+    }]
