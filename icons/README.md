@@ -1,1 +1,1 @@
-icons/README.md/иконки
+icons/README.md/
